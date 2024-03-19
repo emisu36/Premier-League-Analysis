@@ -1,13 +1,10 @@
 ---
-title: "My title"
-subtitle: "My subtitle if needed"
+title: "Poisson Regression Analysis: Exploring the Relationship Between Shots and Goals for Burnley as the Home Team"
 author: 
-  - First author
-  - Another author
-thanks: "Code and data are available at: LINK."
+  - Ping-Jen (Emily) Su
+thanks: "Code and data are available at: https://github.com/emisu36/Premier-League-Analysis."
 date: today
 date-format: long
-abstract: "First sentence. Second sentence. Third sentence. Fourth sentence."
 format: pdf
 number-sections: true
 bibliography: references.bib
@@ -19,197 +16,183 @@ bibliography: references.bib
 #| message: false
 
 library(tidyverse)
-library(palmerpenguins)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
 ```
 
 
 # Introduction
-
-You can and should cross-reference sections and sub-sections. We use @citeR and @rohan.
-
 The remainder of this paper is structured as follows. @sec-data....
-
+In this study, we explore goal scoring trends in football matches using a dataset obtained from https://www.football-data.co.uk/englandm.php. Inspired by @paper analysis of modelling association football scores but a simpler model. We aim to examine whether the number of goals scored increases as more shots are attempted during a match. This investigation is of interest as it can provide insights into team performance and strategies. We use @citeR and @rohan to help complete this paper.
 
 
 # Data {#sec-data}
 
-Some of our data is of penguins (@fig-bills), from @palmerpenguins.
+## Dataset Overview
+Given the topic we are interested, we can simulate the data shown in @fig-simul
+
 
 ```{r}
-#| label: fig-bills
-#| fig-cap: Bills of penguins
 #| echo: false
 
-ggplot(penguins, aes(x = island, fill = species)) +
-  geom_bar(alpha = 0.8) +
-  scale_fill_manual(values = c("darkorange","purple","cyan4"),
-                    guide = "none") +
-  theme_minimal() +
-  facet_wrap(~species, ncol = 1) +
-  coord_flip()
+# Simulate dataset of football match information
+football_data <- tibble(
+  match_id = 1:100, # Example match IDs
+  team_A_shots = rpois(100, lambda = 10), # Simulated number of shots for Team A
+  team_B_shots = rpois(100, lambda = 10), # Simulated number of shots for Team B
+  team_A_goals = rpois(100, lambda = 3), # Simulated number of goals for Team A
+  team_B_goals = rpois(100, lambda = 3) # Simulated number of goals for Team B
+)
+
 ```
 
-Talk more about it.
 
-And also planes (@fig-planes). (You can change the height and width, but don't worry about doing that until you have finished every other aspect of the paper - Quarto will try to make it look nice and the defaults usually work well once you have enough text.)
 
 ```{r}
-#| label: fig-planes
-#| fig-cap: Relationship between wing length and width
+#| label: fig-simul
+#| fig-cap: Simulation of the Data set
 #| echo: false
-#| warning: false
-#| message: false
-
-analysis_data <- read_csv(here::here("data/analysis_data/analysis_data.csv"))
-
-analysis_data |> 
-  ggplot(aes(x = width, y = length)) +
-  geom_point(alpha = 0.8) +
-  theme_minimal() +
-  labs(x = "Wing width (mm)",
-       y = "Wing length (mm)")
+# Visualize counts of goals scored
+football_data %>%
+  ggplot(aes(x = team_A_shots, y = team_A_goals)) +
+  geom_point() +
+  labs(x = "Number of shots by Team A", y = "Number of goals scored by Team A") +
+  theme_minimal()
 ```
 
-Talk way more about it. 
 
+\newpage
+
+## Dataset Preparation
+
+We gather and prepare the data by downloading the match information from the provided source. The dataset is then cleaned and filtered to include relevant variables such as the number of shots and goals for each team in a match. In this time, we will be working to predict for when the home team is Burnley.
+
+```{r}
+#| echo: false
+football_data <- read.csv(here::here("data/analysis_data/football_data.csv"))
+
+cleaned_data <- football_data %>%
+  select(HomeTeam, AwayTeam, FTHG, FTAG, HS) %>% 
+  filter(HomeTeam == "Burnley")
+
+names(cleaned_data) <- c("Home", "Away", "HomeGoals", "AwayGoals", "HS")
+
+str(cleaned_data)
+```
+
+## Exploratory Data Analysis
+
+We start by exploring the distribution of goals scored and shots attempted in the dataset. This includes calculating summary statistics and visualizing the relationship between these variables, as shown in @fig-data-ana .
+
+```{r}
+#| label: fig-data-ana
+#| fig-cap: Simulation of the Data set
+#| echo: false
+# Exploratory data analysis
+
+cleaned_data %>%
+  ggplot(aes(x = HomeGoals, y = HS)) +  # Updated variable names
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(x = "Number of shots by Home Team", y = "Number of goals scored by Home Team") +  # Updated axis labels
+  theme_minimal()
+
+```
 
 
 # Model
 
-The goal of our modelling strategy is twofold. Firstly,...
-
-Here we briefly describe the Bayesian analysis model used to investigate... Background details and diagnostics are included in [Appendix -@sec-model-details].
-
 ## Model set-up
 
-Define $y_i$ as the number of seconds that the plane remained aloft. Then $\beta_i$ is the wing width and $\gamma_i$ is the wing length, both measured in millimeters.  
+Define $y_i$ as the number of goals the team scored. 
 
 \begin{align} 
-y_i|\mu_i, \sigma &\sim \mbox{Normal}(\mu_i, \sigma) \\
-\mu_i &= \alpha + \beta_i + \gamma_i\\
-\alpha &\sim \mbox{Normal}(0, 2.5) \\
-\beta &\sim \mbox{Normal}(0, 2.5) \\
-\gamma &\sim \mbox{Normal}(0, 2.5) \\
-\sigma &\sim \mbox{Exponential}(1)
+y_i|\lambda_i &\sim \mbox{Poisson}(\lambda_i) \\
+\mbox{log}(\lambda_i) &= \beta_0 + \beta_1 * \mbox{opponent}_i \\
+\beta_0 &\sim \mbox{Normal}(0, 2.5) \\
+\beta_1 &\sim \mbox{Normal}(0, 2.5) 
 \end{align}
 
-We run the model in R [@citeR] using the `rstanarm` package of @rstanarm. We use the default priors from `rstanarm`.
+We run the model in R [@citeR] and used `glm` to form our model.
 
 
 ### Model justification
 
-We expect a positive relationship between the size of the wings and time spent aloft. In particular...
-
-We can use maths by including latex between dollar signs, for instance $\theta$.
-
+Since poisson regression is commonly used to model count data when the outcome variable represents the number of times an event occurs within a fixed period of time or space. In football matches, goals scored by a team can be considered as count data, as they represent discrete events that happen over a fixed duration of time (the duration of the match). Additionally, the Poisson distribution is appropriate when the event rate is relatively low and events occur randomly and independently over time, which is a reasonable assumption for goals scored in football matches.
+Therefore, given that the outcome variable (goals scored by Burnley as the home team) meets the criteria for count data and the assumptions of the Poisson distribution hold reasonably well in this context, Poisson regression is a suitable choice for analyzing the relationship between the number of shots taken (predictor variable) and the number of goals scored (outcome variable) by Burnley as the home team.
 
 # Results
 
-Our results are summarized in @tbl-modelresults.
+## Goal Scoring Trends
+To investigate the relationship between the number of shots attempted and goals scored, we fit a Poisson regression model. The model considers the number of shots as the explanatory variable and the number of goals as the response variable.
 
 ```{r}
-#| echo: false
-#| eval: true
-#| warning: false
 #| message: false
+#| warning: false
+#| echo: false
 
-library(rstanarm)
+# Fit Poisson regression model
+football_model <- glm(
+  formula = HomeGoals ~ HS,
+  data = cleaned_data,
+  family = poisson
+)
 
-first_model <-
-  readRDS(file = here::here("models/first_model.rds"))
+summary(football_model)
+
 ```
+
+
 
 ```{r}
+#| label: fig-diag
+#| fig-cap: Diagnostic Plots
 #| echo: false
-#| eval: true
-#| label: tbl-modelresults
-#| tbl-cap: "Explanatory models of flight time based on wing width and wing length"
-#| warning: false
 
-modelsummary::modelsummary(
-  list(
-    "First model" = first_model
-  ),
-  statistic = "mad",
-  fmt = 2
-)
+# Model evaluation - diagnostic plots
+par(mfrow = c(2, 2))
+plot(football_model)
 ```
 
+The Poisson regression model was employed to analyze the relationship between the number of shots (HS) and the number of goals scored by the home team (HomeGoals) in football matches. The model yielded the following results:
 
+Coefficients:
 
+Intercept: The estimated intercept ($\beta_0$) is -2.00620 with a standard error of 1.04053. The z-value associated with the intercept is -1.928, yielding a p-value of 0.0538, suggesting marginal significance at the 0.05 level.
+HS: The estimated coefficient (($\beta_1$)) for the number of shots (HS) is 0.14279, with a standard error of 0.06631. The z-value for this coefficient is 2.153, corresponding to a p-value of 0.0313, indicating significance at the 0.05 level.
+
+Model Fit:
+
+Null Deviance: The null deviance, representing the difference between the null model (with no predictors) and the observed data, is 24.412 on 14 degrees of freedom.
+Residual Deviance: The residual deviance, measuring the difference between the fitted model and the observed data, is 19.485 on 13 degrees of freedom.
+AIC (Akaike Information Criterion): The AIC value for the model is 42.807.
 
 # Discussion
 
-## First discussion point {#sec-first-point}
+## Interpretation {#sec-first-point}
 
-If my paper were 10 pages, then should be be at least 2.5 pages. The discussion is a chance to show off what you know and what you learnt from all this. 
+With the results in @fig-diag, the intercept term (-2.00620) represents the expected number of goals scored by the home team when the number of shots (HS) is zero. However, since zero shots are not practically feasible in a football match, the interpretation of the intercept in this context may not be meaningful.
 
-## Second discussion point
+The coefficient for the number of shots (HS) is 0.14279, indicating that for each additional shot taken by the home team, the expected number of goals scored increases by approximately 0.143, holding all other variables constant. This coefficient is statistically significant (p = 0.0313), suggesting that there is evidence to reject the null hypothesis of no relationship between the number of shots and the number of goals scored by the home team.
 
-## Third discussion point
+## Model Evaluation:
+The model's AIC value of 42.807 suggests that, among competing models, the current Poisson regression model provides a relatively good balance between model fit and complexity.
 
-## Weaknesses and next steps
+## Discussion and Conclusion:
+The results indicate that there is a positive association between the number of shots taken by the home team and the number of goals scored, supporting the intuitive notion that a higher volume of shots increases the likelihood of scoring goals. However, it's essential to consider other factors, such as the quality of shots, defensive strategies of the opposing team, and various situational factors, which may also influence goal-scoring outcomes in football matches.
 
-Weaknesses and next steps should also be included.
+Overall, the findings contribute to understanding the factors influencing goal scoring in football matches and provide insights for coaches, analysts, and decision-makers to optimize team strategies and performance. Further research could explore additional variables and more complex models to enhance the predictive accuracy of goal-scoring trends in football.
+
+
 
 \newpage
 
 \appendix
 
-# Appendix {-}
 
 
-# Additional data details
 
-# Model details {#sec-model-details}
-
-## Posterior predictive check
-
-In @fig-ppcheckandposteriorvsprior-1 we implement a posterior predictive check. This shows...
-
-In @fig-ppcheckandposteriorvsprior-2 we compare the posterior with the prior. This shows... 
-
-```{r}
-#| eval: true
-#| echo: false
-#| message: false
-#| warning: false
-#| label: fig-ppcheckandposteriorvsprior
-#| layout-ncol: 2
-#| fig-cap: "Examining how the model fits, and is affected by, the data"
-#| fig-subcap: ["Posterior prediction check", "Comparing the posterior with the prior"]
-
-pp_check(first_model) +
-  theme_classic() +
-  theme(legend.position = "bottom")
-
-posterior_vs_prior(first_model) +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(legend.position = "bottom") +
-  coord_flip()
-```
-
-## Diagnostics
-
-@fig-stanareyouokay-1 is a trace plot. It shows... This suggests...
-
-@fig-stanareyouokay-2 is a Rhat plot. It shows... This suggests...
-
-```{r}
-#| echo: false
-#| eval: true
-#| message: false
-#| warning: false
-#| label: fig-stanareyouokay
-#| fig-cap: "Checking the convergence of the MCMC algorithm"
-#| fig-subcap: ["Trace plot", "Rhat plot"]
-#| layout-ncol: 2
-
-plot(first_model, "trace")
-
-plot(first_model, "rhat")
-```
 
 
 
